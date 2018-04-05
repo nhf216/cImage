@@ -1,3 +1,5 @@
+import os
+import sys
 """
 image.py
 This module provides a simple interface to create a window, load an image and experiment
@@ -53,6 +55,19 @@ which serves a similar purpose in the graphics primitive world.
 # distribute on pypi
 #
 
+# Nathan Fox, The College of Wooster
+# April 2018
+# Changes:
+#   Window moves to front on Mac now
+#   When you create a new window, it moves in front (versus just the first
+#     window you create). This is useful when running in an interactive
+#     environment.
+#   Fixed a deadlock that occurred when the user clicked the X on the window
+#     after calling exitOnClick.
+#   createBlankTkImage now creates a solid black image, as opposed to a fully
+#     transparent black image. createBlankPILImage always did a solid black
+#     image.
+
 try:
     import tkinter
 except:
@@ -72,15 +87,6 @@ except:
 tk = tkinter
 _imroot = tk.Tk()
 _imroot.withdraw()
-
-# Make sure the displayed window is on top - otherwise drawing can appear to fail.
-# The _imroot.lift() call was required on Windows 7 - Linux was fine without it
-# not sure about Mac, but there are some tips at
-# http://stackoverflow.com/questions/8691655/how-to-put-a-tkinter-window-on-top-of-the-others
-_imroot.lift()
-#_imroot.call('wm', 'attributes', '.', '-topmost', True)
-#_imroot.after_idle(_imroot.call, 'wm', 'attributes', '.', '-topmost', False)
-
 
 def formatPixel(data):
     if type(data) == tuple:
@@ -111,11 +117,29 @@ class ImageWin(tk.Canvas):
         self.height = height
         self.width = width
         self._mouseCallback = None
+        self.getting_mouse = False
         self.trans = None
+        # Make sure the displayed window is on top - otherwise drawing can appear to fail.
+        # The _imroot.lift() call was required on Windows 7 - Linux was fine without it
+        # not sure about Mac, but there are some tips at
+        # http://stackoverflow.com/questions/8691655/how-to-put-a-tkinter-window-on-top-of-the-others
+        if sys.platform.lower() == 'darwin':
+            os.system('''/usr/bin/osascript -e 'tell app "Finder" to set frontmost of process "Python" to true' ''')
+        else:
+            _imroot.lift()
+        #_imroot.call('wm', 'attributes', '.', '-topmost', True)
+        #_imroot.after_idle(_imroot.call, 'wm', 'attributes', '.', '-topmost', False)
         _imroot.update()
 
     def _close(self):
         """Close the window"""
+        #This makes sure the program doesn't deadlock if you close the window
+        #by clicking the X while you're running exitOnClick
+        if self.getting_mouse:
+            self.mouseX = -1
+            self.mouseY = -1
+            return
+        
         self.master.destroy()
         self.quit()
         _imroot.update()
@@ -125,8 +149,10 @@ class ImageWin(tk.Canvas):
         the click"""
         self.mouseX = None
         self.mouseY = None
+        self.getting_mouse = True
         while self.mouseX == None or self.mouseY == None:
             self.update()
+        self.getting_mouse = False
         return ((self.mouseX,self.mouseY))
 
     def setMouseHandler(self, func):
@@ -314,6 +340,9 @@ class AbstractImage(object):
 
     def createBlankTkImage(self,height,width):
         self.im = tkinter.PhotoImage(height=height,width=width)
+        for x in range(width):
+            for y in range(height):
+                self.im.put("{black}", to=(x,y))
 
 
     def copy(self):
